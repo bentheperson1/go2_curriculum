@@ -122,9 +122,9 @@ class RobotDog:
 
 		if response['data']['header']['status']['code'] == 0:
 			data = json.loads(response['data']['data'])
-			current_motion_switcher_mode = data['name']
+			self.current_motion_switcher_mode = data['name']
 
-			return current_motion_switcher_mode
+			return self.current_motion_switcher_mode
 		
 		return ""
 
@@ -141,16 +141,29 @@ class RobotDog:
 					"parameter": {"name": mode}
 				}
 			)
-
-			await asyncio.sleep(5)
 	
 	async def motion_perform_normal_action(self, action: str) -> None:
+		if self.motion_get_current_mode != MotionState.NORMAL:
+			return
+
 		await self.conn.datachannel.pub_sub.publish_request_new(
 			RTC_TOPIC["SPORT_MOD"], 
-			{"api_id": SPORT_CMD[action]}
+			{
+				"api_id": SPORT_CMD[action]
+			}
 		)
+	
+	async def motion_perform_ai_action(self, action: str, mode: bool = True) -> None:
+		if self.motion_get_current_mode != MotionState.AI:
+			return
 
-		await asyncio.sleep(1)
+		await self.conn.datachannel.pub_sub.publish_request_new(
+            RTC_TOPIC["SPORT_MOD"], 
+            {
+                "api_id": SPORT_CMD[action],
+                "parameter": {"data": mode}
+            }
+        )
 
 	async def motion_move(self, forward: float = 0, side: float = 0, yaw: float = 0) -> None:
 		await self.conn.datachannel.pub_sub.publish_request_new(
@@ -160,8 +173,6 @@ class RobotDog:
 				"parameter": {"x": forward, "y": side, "z": yaw}
 			}
 		)
-
-		await asyncio.sleep(1)
 
 	def audio_play_mp3_from_file(self, file_name) -> None:
 		mp3_path = os.path.join(os.path.dirname(__file__), file_name)
@@ -227,8 +238,6 @@ class RobotDog:
 
 		print(f"Brightness level: {amt}/10")
 
-		await asyncio.sleep(0.5)
-	
 	async def light_set_color(self, color) -> None:
 		await self.conn.datachannel.pub_sub.publish_request_new(
             RTC_TOPIC["VUI"], 

@@ -1,0 +1,7 @@
+Complete the following missions in any order:
+
+1. Walk in a complete square pattern with 1m length
+2. Perform a normal action, turn 270 degrees clockwise, set the headlight to red, and then perform a different normal action
+3. A python script that takes takes in user input from the console and then moves in the direction specified (turn left, turn right, forward, left, etc)
+4. Display the dog's camera stream and then gradually increase and then decrease the dog's headlight with any color
+5. Set the dog's headlight to max white, then have it walk from the garage door to the print farm, and then play a sound of your choice when complete
