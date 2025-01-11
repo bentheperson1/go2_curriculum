@@ -9,7 +9,7 @@ import os
 
 from queue import Queue
 from go2_webrtc_driver.webrtc_driver import Go2WebRTCConnection, WebRTCConnectionMethod
-from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
+from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD, VUI_COLOR
 from aiortc import MediaStreamTrack
 from aiortc.contrib.media import MediaPlayer
 
@@ -47,6 +47,8 @@ class RobotDog:
 		self.frame_queue = Queue()
 		self.window_title = "Dog Video"
 		self.current_motion_switcher_mode = ""
+		self.current_volume = 0
+		self.current_brightness = 0
 
 		logging.basicConfig(level=logging.INFO)
 		
@@ -56,6 +58,9 @@ class RobotDog:
 		await self.conn.connect()
 
 		self.motion_switch_mode("normal")
+		self.audio_set_volume(5)
+		self.light_set_brightness(5)
+		self.light_set_color(VUI_COLOR.WHITE)
 
 	async def _video_recv_camera_stream(self, track: MediaStreamTrack):
 		while True:
@@ -118,13 +123,12 @@ class RobotDog:
 		if response['data']['header']['status']['code'] == 0:
 			data = json.loads(response['data']['data'])
 			current_motion_switcher_mode = data['name']
-			print(f"Current motion mode: {current_motion_switcher_mode}")
 
 			return current_motion_switcher_mode
 		
 		return ""
 
-	async def motion_switch_mode(self, mode: str):
+	async def motion_switch_mode(self, mode: str) -> None:
 		self.motion_get_current_mode()
 
 		if self.current_motion_switcher_mode != mode:
@@ -140,7 +144,7 @@ class RobotDog:
 
 			await asyncio.sleep(5)
 	
-	async def motion_perform_normal_action(self, action: str):
+	async def motion_perform_normal_action(self, action: str) -> None:
 		await self.conn.datachannel.pub_sub.publish_request_new(
 			RTC_TOPIC["SPORT_MOD"], 
 			{"api_id": SPORT_CMD[action]}
@@ -148,7 +152,7 @@ class RobotDog:
 
 		await asyncio.sleep(1)
 
-	async def motion_move(self, forward = 0, side = 0, yaw = 0):
+	async def motion_move(self, forward: float = 0, side: float = 0, yaw: float = 0) -> None:
 		await self.conn.datachannel.pub_sub.publish_request_new(
 			RTC_TOPIC["SPORT_MOD"], 
 			{
@@ -159,11 +163,81 @@ class RobotDog:
 
 		await asyncio.sleep(1)
 
-	def audio_play_mp3_from_file(self, file_name):
+	def audio_play_mp3_from_file(self, file_name) -> None:
 		mp3_path = os.path.join(os.path.dirname(__file__), file_name)
 		
 		logging.info(f"Playing MP3: {mp3_path}")
 		player = MediaPlayer(mp3_path)
-		
+
 		self.conn.pc.addTrack(player.audio)
 	
+	async def audio_get_volume(self) -> int:
+		print("\nFetching the current volume level...")
+
+		response = await self.conn.datachannel.pub_sub.publish_request_new(
+			RTC_TOPIC["VUI"], 
+			{"api_id": 1004}
+		)
+
+		if response['data']['header']['status']['code'] == 0:
+			data = json.loads(response['data']['data'])
+			self.current_volume = data['volume']
+
+			return self.current_volume
+		
+		return 0
+
+	async def audio_set_volume(self, amt) -> None:
+		self.current_volume = amt
+
+		await self.conn.datachannel.pub_sub.publish_request_new(
+			RTC_TOPIC["VUI"], 
+			{
+				"api_id": 1003,
+				"parameter": {"volume": amt}
+			}
+		)
+
+	async def light_get_brightness(self) -> int:
+		print("\nFetching the current brightness level...")
+
+		response = await self.conn.datachannel.pub_sub.publish_request_new(
+			RTC_TOPIC["VUI"], 
+			{"api_id": 1006}
+		)
+
+		if response['data']['header']['status']['code'] == 0:
+			data = json.loads(response['data']['data'])
+			self.current_brightness = data['brightness']
+			
+			return self.current_brightness
+		
+		return 0
+	
+	async def light_set_brightness(self, amt) -> None:
+		self.current_brightness = amt
+
+		await self.conn.datachannel.pub_sub.publish_request_new(
+			RTC_TOPIC["VUI"], 
+			{
+				"api_id": 1005,
+				"parameter": {"brightness": amt}
+			}
+		)
+
+		print(f"Brightness level: {amt}/10")
+
+		await asyncio.sleep(0.5)
+	
+	async def light_set_color(self, color) -> None:
+		await self.conn.datachannel.pub_sub.publish_request_new(
+            RTC_TOPIC["VUI"], 
+            {
+                "api_id": 1007,
+                "parameter": 
+                {
+                    "color": color,
+                    "time": 5
+                }
+            }
+        )

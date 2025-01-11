@@ -1,4 +1,6 @@
 from go2_module import *
+from go2_webrtc_driver.constants import VUI_COLOR
+
 import asyncio
 import sys
 
@@ -7,15 +9,16 @@ async def main():
 
     await dog.connect_to_robot()
 
-    dog.video_display_stream()
+    dog.video_display_stream(1280, 720)
 
-    dog.motion_perform_normal_action(NormalActions.HELLO)
+    await dog.audio_set_volume(10)
+    await dog.light_set_color(VUI_COLOR.RED)
+    await dog.motion_perform_normal_action(NormalActions.HELLO)
 
-    dog.motion_move(1, 0, 0)
+    await dog.motion_move(1, 0, 0)
+    await dog.motion_move(-1, 0, 0)
 
-    dog.motion_move(-1, 0, 0)
-
-    dog.motion_perform_normal_action(NormalActions.HEART)
+    await dog.motion_perform_normal_action(NormalActions.HEART)
 
     dog.audio_play_mp3_from_file("audio/demo.mp3")
 
