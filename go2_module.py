@@ -43,7 +43,7 @@ class AIActions:
 
 class RobotDog:
 	def __init__(self):
-		self.conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalSTA, serialNumber="B42D2000XXXXXXXX")
+		self.conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalAP, serialNumber="B42D2000XXXXXXXX")
 		self.frame_queue = Queue()
 		self.window_title = "Dog Video"
 		self.current_motion_switcher_mode = ""
