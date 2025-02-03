@@ -43,6 +43,7 @@ class AIActions:
 
 class RobotDog:
 	def __init__(self):
+		# Replace the serial number with your robot's serial number
 		self.conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalAP, serialNumber="B42D2000XXXXXXXX")
 		self.frame_queue = Queue()
 		self.window_title = "Dog Video"
@@ -51,57 +52,57 @@ class RobotDog:
 		self.current_brightness = 0
 
 		logging.basicConfig(level=logging.INFO)
-		
 		logging.debug("Successfully initialized Go2 module.")
 
 	async def connect_to_robot(self):
 		await self.conn.connect()
 
-		self.motion_switch_mode("normal")
-		self.audio_set_volume(5)
-		self.light_set_brightness(5)
-		self.light_set_color(VUI_COLOR.WHITE)
+		# Set default parameters
+		await self.motion_switch_mode(MotionState.NORMAL)
+		await self.audio_set_volume(5)
+		await self.light_set_brightness(5)
+		await self.light_set_color(VUI_COLOR.WHITE)
 
 	async def _video_recv_camera_stream(self, track: MediaStreamTrack):
 		while True:
 			try:
 				frame = await track.recv()
-			except:
-				pass
-			
+			except Exception as e:
+				logging.error(f"Error receiving frame: {e}")
+				continue
+
 			img = frame.to_ndarray(format="bgr24")
 			self.frame_queue.put(img)
 
 	def _video_run_asyncio_loop(self, loop):
 		asyncio.set_event_loop(loop)
-		
+
 		async def setup():
 			try:
 				await self.conn.connect()
 				self.conn.video.switchVideoChannel(True)
 				self.conn.video.add_track_callback(self._video_recv_camera_stream)
-			except:
-				pass
-		
+			except Exception as e:
+				logging.error(f"Error in video setup: {e}")
+
 		loop.run_until_complete(setup())
 		loop.run_forever()
 
 	def _video_show_camera_thread(self, width, height):
+		# Show a blank image until we have a frame.
 		img = np.zeros((height, width, 3), dtype=np.uint8)
 		cv2.imshow(self.window_title, img)
 		cv2.waitKey(1)
-		
+
 		loop = asyncio.new_event_loop()
-		
 		t = threading.Thread(target=self._video_run_asyncio_loop, args=(loop,))
 		t.start()
-		
+
 		try:
 			while True:
 				if not self.frame_queue.empty():
 					img = self.frame_queue.get()
 					cv2.imshow(self.window_title, img)
-					
 					if cv2.waitKey(1) & 0xFF == ord('q'):
 						break
 				else:
@@ -112,62 +113,64 @@ class RobotDog:
 			t.join()
 
 	def video_display_stream(self, width=640, height=480) -> None:
-		threading.Thread(target=self._video_show_camera_thread, args=(width, height)).start()
+		threading.Thread(target=self._video_show_camera_thread, args=(width, height), daemon=True).start()
 
 	async def motion_get_current_mode(self) -> str:
 		response = await self.conn.datachannel.pub_sub.publish_request_new(
-			RTC_TOPIC["MOTION_SWITCHER"], 
+			RTC_TOPIC["MOTION_SWITCHER"],
 			{"api_id": 1001}
 		)
 
 		if response['data']['header']['status']['code'] == 0:
 			data = json.loads(response['data']['data'])
 			self.current_motion_switcher_mode = data['name']
-
 			return self.current_motion_switcher_mode
-		
+
 		return ""
 
 	async def motion_switch_mode(self, mode: str) -> None:
-		self.motion_get_current_mode()
+		current_mode = await self.motion_get_current_mode()
 
-		if self.current_motion_switcher_mode != mode:
-			print(f"Switching motion mode from {self.current_motion_switcher_mode} to '{mode}'...")
-	
+		if current_mode != mode:
+			print(f"Switching motion mode from {current_mode} to '{mode}'...")
 			await self.conn.datachannel.pub_sub.publish_request_new(
-				RTC_TOPIC["MOTION_SWITCHER"], 
+				RTC_TOPIC["MOTION_SWITCHER"],
 				{
 					"api_id": 1002,
 					"parameter": {"name": mode}
 				}
 			)
-	
+
 	async def motion_perform_normal_action(self, action: str) -> None:
-		if self.motion_get_current_mode != MotionState.NORMAL:
+		current_mode = await self.motion_get_current_mode()
+		if current_mode != MotionState.NORMAL:
+			logging.warning("Cannot perform normal action when not in NORMAL mode.")
 			return
 
 		await self.conn.datachannel.pub_sub.publish_request_new(
-			RTC_TOPIC["SPORT_MOD"], 
+			RTC_TOPIC["SPORT_MOD"],
 			{
 				"api_id": SPORT_CMD[action]
 			}
 		)
-	
+
 	async def motion_perform_ai_action(self, action: str, mode: bool = True) -> None:
-		if self.motion_get_current_mode != MotionState.AI:
+		current_mode = await self.motion_get_current_mode()
+		if current_mode != MotionState.AI:
+			logging.warning("Cannot perform AI action when not in AI mode.")
 			return
 
 		await self.conn.datachannel.pub_sub.publish_request_new(
-            RTC_TOPIC["SPORT_MOD"], 
-            {
-                "api_id": SPORT_CMD[action],
-                "parameter": {"data": mode}
-            }
-        )
+			RTC_TOPIC["SPORT_MOD"],
+			{
+				"api_id": SPORT_CMD[action],
+				"parameter": {"data": mode}
+			}
+		)
 
 	async def motion_move(self, forward: float = 0, side: float = 0, yaw: float = 0) -> None:
 		await self.conn.datachannel.pub_sub.publish_request_new(
-			RTC_TOPIC["SPORT_MOD"], 
+			RTC_TOPIC["SPORT_MOD"],
 			{
 				"api_id": SPORT_CMD["Move"],
 				"parameter": {"x": forward, "y": side, "z": yaw}
@@ -176,33 +179,34 @@ class RobotDog:
 
 	def audio_play_mp3_from_file(self, file_name) -> None:
 		mp3_path = os.path.join(os.path.dirname(__file__), file_name)
-		
+		if not os.path.isfile(mp3_path):
+			logging.error(f"MP3 file not found: {mp3_path}")
+			return
+
 		logging.info(f"Playing MP3: {mp3_path}")
 		player = MediaPlayer(mp3_path)
-
 		self.conn.pc.addTrack(player.audio)
-	
+
 	async def audio_get_volume(self) -> int:
 		print("\nFetching the current volume level...")
 
 		response = await self.conn.datachannel.pub_sub.publish_request_new(
-			RTC_TOPIC["VUI"], 
+			RTC_TOPIC["VUI"],
 			{"api_id": 1004}
 		)
 
 		if response['data']['header']['status']['code'] == 0:
 			data = json.loads(response['data']['data'])
 			self.current_volume = data['volume']
-
 			return self.current_volume
-		
+
 		return 0
 
 	async def audio_set_volume(self, amt) -> None:
 		self.current_volume = amt
 
 		await self.conn.datachannel.pub_sub.publish_request_new(
-			RTC_TOPIC["VUI"], 
+			RTC_TOPIC["VUI"],
 			{
 				"api_id": 1003,
 				"parameter": {"volume": amt}
@@ -213,23 +217,22 @@ class RobotDog:
 		print("\nFetching the current brightness level...")
 
 		response = await self.conn.datachannel.pub_sub.publish_request_new(
-			RTC_TOPIC["VUI"], 
+			RTC_TOPIC["VUI"],
 			{"api_id": 1006}
 		)
 
 		if response['data']['header']['status']['code'] == 0:
 			data = json.loads(response['data']['data'])
 			self.current_brightness = data['brightness']
-			
 			return self.current_brightness
-		
+
 		return 0
-	
+
 	async def light_set_brightness(self, amt) -> None:
 		self.current_brightness = amt
 
 		await self.conn.datachannel.pub_sub.publish_request_new(
-			RTC_TOPIC["VUI"], 
+			RTC_TOPIC["VUI"],
 			{
 				"api_id": 1005,
 				"parameter": {"brightness": amt}
@@ -240,13 +243,12 @@ class RobotDog:
 
 	async def light_set_color(self, color) -> None:
 		await self.conn.datachannel.pub_sub.publish_request_new(
-            RTC_TOPIC["VUI"], 
-            {
-                "api_id": 1007,
-                "parameter": 
-                {
-                    "color": color,
-                    "time": 5
-                }
-            }
-        )
+			RTC_TOPIC["VUI"],
+			{
+				"api_id": 1007,
+				"parameter": {
+					"color": color,
+					"time": 5
+				}
+			}
+		)
